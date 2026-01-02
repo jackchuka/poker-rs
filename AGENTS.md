@@ -152,7 +152,7 @@ rustup default stable
 cargo fmt --all
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all
-cargo run --bin poker   # if TUI binary exists
+cargo run --bin poker-rs   # if TUI binary exists
 ```
 
 Optional tooling:

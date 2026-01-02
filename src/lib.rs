@@ -30,7 +30,7 @@
 //! ## TUI
 //! Run the interactive TUI with:
 //! ```sh
-//! cargo run --bin poker
+//! cargo run --bin poker-rs
 //! ```
 
 pub mod agents;

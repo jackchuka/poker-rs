@@ -10,7 +10,7 @@ name = "poker_rs"
 path = "src/lib.rs"
 
 [[bin]]
-name = "poker"
+name = "poker-rs"
 path = "src/bin/poker.rs"
 
 [features]

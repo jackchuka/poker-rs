@@ -14,7 +14,7 @@ High-performance poker hand evaluation library written in Rust with a Ratatui TU
 ## Quick Start (TUI)
 
 ```sh
-cargo run --bin poker
+cargo run --bin poker-rs
 ```
 
 Use `?` in the app for the in-game help.
