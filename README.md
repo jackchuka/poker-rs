@@ -13,6 +13,15 @@ High-performance poker hand evaluation library written in Rust with a Ratatui TU
 
 ## Quick Start (TUI)
 
+### Homebrew (macOS/Linux)
+
+```sh
+brew install jackchuka/tap/poker-rs
+poker-rs
+```
+
+### From Source
+
 ```sh
 cargo run --bin poker-rs
 ```
