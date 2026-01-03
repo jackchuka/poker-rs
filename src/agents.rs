@@ -245,7 +245,6 @@ mod tests {
 
         g.current_bet = 0;
         g.last_raiser = None;
-        g.last_raiser_acted = false;
         g.pot = 0;
         for p in &mut g.players {
             p.bet = 0;
