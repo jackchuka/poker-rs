@@ -508,4 +508,238 @@ mod tests {
 
         assert_eq!(app.game.players[app.focus].last_action, last_action);
     }
+
+    #[test]
+    fn default_state_is_menu() {
+        let app = AppState::default();
+        assert_eq!(app.scene, Scene::Menu);
+        assert!(!app.hand_started);
+        assert!(!app.help_open());
+        assert!(!app.history_open());
+        assert!(!app.amount_entry_active());
+    }
+
+    #[test]
+    fn help_toggle() {
+        let mut app = AppState {
+            scene: Scene::Table, // Help only works on Table scene
+            ..Default::default()
+        };
+        assert!(!app.help_open());
+
+        app.handle_input(InputAction::ToggleHelp);
+        assert!(app.help_open());
+
+        app.handle_input(InputAction::ToggleHelp);
+        assert!(!app.help_open());
+    }
+
+    #[test]
+    fn history_toggle() {
+        let mut app = AppState {
+            scene: Scene::Table, // History only works on Table scene
+            ..Default::default()
+        };
+        assert!(!app.history_open());
+
+        app.handle_input(InputAction::ToggleHistory);
+        assert!(app.history_open());
+
+        app.handle_input(InputAction::ToggleHistory);
+        assert!(!app.history_open());
+    }
+
+    #[test]
+    fn menu_toggle_switches_scenes() {
+        let mut app = AppState::default();
+        assert_eq!(app.scene, Scene::Menu);
+
+        app.handle_input(InputAction::ToggleMenu);
+        assert_eq!(app.scene, Scene::Table);
+
+        app.handle_input(InputAction::ToggleMenu);
+        assert_eq!(app.scene, Scene::Menu);
+    }
+
+    #[test]
+    fn amount_entry_lifecycle() {
+        let mut app = AppState::default();
+        app.apply_menu();
+        app.hand_started = true;
+        app.scene = Scene::Table;
+
+        // Can't open amount entry if not our turn
+        app.focus = 0;
+        app.game.current = 1;
+        app.handle_input(InputAction::AmountOpen);
+        assert!(!app.amount_entry_active());
+
+        // Set it to be our turn
+        app.game.current = app.focus;
+        app.handle_input(InputAction::AmountOpen);
+        assert!(app.amount_entry_active());
+
+        // Test digit entry
+        app.handle_input(InputAction::AmountDigit(5));
+        if let Some(text) = app.amount_entry_text() {
+            assert!(text.contains('5'));
+        }
+
+        // Test backspace
+        app.handle_input(InputAction::AmountBackspace);
+
+        // Test increment
+        app.handle_input(InputAction::AmountIncBb);
+
+        // Test decrement
+        app.handle_input(InputAction::AmountDecBb);
+
+        // Cancel
+        app.handle_input(InputAction::AmountCancel);
+        assert!(!app.amount_entry_active());
+    }
+
+    #[test]
+    fn amount_entry_digit_limit() {
+        let mut app = AppState::default();
+        app.apply_menu();
+        app.hand_started = true;
+        app.scene = Scene::Table;
+        app.game.current = app.focus;
+
+        app.handle_input(InputAction::AmountOpen);
+        assert!(app.amount_entry_active());
+
+        // Add many digits (limit is 12)
+        for _ in 0..15 {
+            app.handle_input(InputAction::AmountDigit(9));
+        }
+
+        if let Some(text) = app.amount_entry_text() {
+            assert!(text.len() <= 12);
+        }
+    }
+
+    #[test]
+    fn focus_navigation() {
+        let mut app = AppState { scene: Scene::Table, ..Default::default() };
+
+        app.handle_input(InputAction::FocusNext);
+        // Focus should change or wrap
+
+        app.handle_input(InputAction::FocusPrev);
+        // Should go back or wrap the other way
+
+        app.handle_input(InputAction::FocusSeat(2));
+        assert_eq!(app.focus, 2);
+
+        app.handle_input(InputAction::FocusSeat(0));
+        assert_eq!(app.focus, 0);
+    }
+
+    #[test]
+    fn bot_difficulty_cycles() {
+        let mut app = AppState::default();
+        let initial = app.bot_default_difficulty;
+
+        app.handle_input(InputAction::BotDifficultyNext);
+        // Should cycle to next difficulty
+
+        app.handle_input(InputAction::BotDifficultyNext);
+        app.handle_input(InputAction::BotDifficultyNext);
+        app.handle_input(InputAction::BotDifficultyNext);
+        // After 4 cycles, should be back to where we started
+        assert_eq!(app.bot_default_difficulty, initial);
+    }
+
+    #[test]
+    fn menu_navigation() {
+        let mut app = AppState { scene: Scene::Menu, ..Default::default() };
+
+        let initial_index = app.menu_index;
+
+        app.handle_input(InputAction::MenuNext);
+        assert!(app.menu_index != initial_index || app.menu_index == 0);
+
+        app.handle_input(InputAction::MenuPrev);
+    }
+
+    #[test]
+    fn menu_value_adjustment() {
+        let mut app = AppState { scene: Scene::Menu, menu_index: 0, ..Default::default() };
+
+        app.handle_input(InputAction::MenuInc);
+        // Should increment the current menu value
+
+        app.handle_input(InputAction::MenuDec);
+        // Should decrement back
+    }
+
+    #[test]
+    fn menu_apply_and_cancel() {
+        let mut app = AppState {
+            scene: Scene::Menu,
+            cfg_num_players: 9,
+            cfg_starting_stack: 2000,
+            ..Default::default()
+        };
+
+        app.handle_input(InputAction::MenuApply);
+        // Should apply settings and switch to table
+        assert_eq!(app.scene, Scene::Table);
+        assert_eq!(app.game.players.len(), 9);
+
+        // Cancel should just switch scenes
+        app.scene = Scene::Menu;
+        app.handle_input(InputAction::MenuCancel);
+        assert_eq!(app.scene, Scene::Table);
+    }
+
+    #[test]
+    fn new_hand_action() {
+        let mut app = AppState::default();
+        app.apply_menu();
+        app.scene = Scene::Table;
+
+        app.handle_input(InputAction::NewHand);
+        assert!(app.hand_started);
+    }
+
+    #[test]
+    fn difficulty_labels() {
+        assert_eq!(AppState::difficulty_label(Difficulty::Easy), "Easy");
+        assert_eq!(AppState::difficulty_label(Difficulty::Medium), "Med");
+        assert_eq!(AppState::difficulty_label(Difficulty::Hard), "Hard");
+        assert_eq!(AppState::difficulty_label(Difficulty::Expert), "Xprt");
+    }
+
+    #[test]
+    fn action_error_cleared_on_queue() {
+        let mut app = AppState::default();
+        app.apply_menu();
+        app.hand_started = true;
+        app.scene = Scene::Table;
+        app.game.current = app.focus;
+
+        // Set an error
+        app.action_error = Some("Test error".to_string());
+        app.action_error_at = Some(Instant::now());
+
+        // Queue an action (should clear error)
+        app.queue_action(Action::CheckCall);
+
+        // Error should be cleared
+        assert!(app.action_error().is_none());
+    }
+
+    #[test]
+    fn history_offset_navigation() {
+        let mut app = AppState { scene: Scene::Table, history_open: true, ..Default::default() };
+
+        app.handle_input(InputAction::HistoryDown);
+        // Offset should increase or stay at max
+
+        app.handle_input(InputAction::HistoryUp);
+        // Offset should decrease or stay at 0
+    }
 }

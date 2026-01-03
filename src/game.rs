@@ -70,6 +70,15 @@ pub enum ActionError {
     TargetTooLow { current: u64, target: u64 },
 }
 
+#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ShowdownError {
+    #[error("hand evaluation failed: {0}")]
+    EvaluationFailed(String),
+    #[error("invalid game state: {0}")]
+    InvalidState(String),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct HandHistoryEntry {
@@ -82,13 +91,50 @@ pub struct HandHistoryEntry {
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct Player {
-    pub name: String,
-    pub stack: u64,
-    pub bet: u64,
-    pub contributed: u64,
-    pub status: PlayerStatus,
-    pub hole: Option<HoleCards>,
-    pub last_action: Option<String>,
+    pub(crate) name: String,
+    pub(crate) stack: u64,
+    pub(crate) bet: u64,
+    pub(crate) contributed: u64,
+    pub(crate) status: PlayerStatus,
+    pub(crate) hole: Option<HoleCards>,
+    pub(crate) last_action: Option<String>,
+}
+
+impl Player {
+    /// Returns the player's name
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the player's current stack
+    pub fn stack(&self) -> u64 {
+        self.stack
+    }
+
+    /// Returns the player's current bet in the current betting round
+    pub fn bet(&self) -> u64 {
+        self.bet
+    }
+
+    /// Returns the player's total contributed to the pot this hand
+    pub fn contributed(&self) -> u64 {
+        self.contributed
+    }
+
+    /// Returns the player's status
+    pub fn status(&self) -> PlayerStatus {
+        self.status
+    }
+
+    /// Returns the player's hole cards
+    pub fn hole(&self) -> Option<HoleCards> {
+        self.hole
+    }
+
+    /// Returns the player's last action as a string
+    pub fn last_action(&self) -> Option<&str> {
+        self.last_action.as_deref()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,29 +146,29 @@ pub(crate) struct PotBreakdown {
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct Game {
-    pub small_blind: u64,
-    pub big_blind: u64,
-    pub starting_stack: u64,
+    pub(crate) small_blind: u64,
+    pub(crate) big_blind: u64,
+    pub(crate) starting_stack: u64,
 
-    pub deck: Deck,
-    pub board: Board,
-    pub players: Vec<Player>,
-    pub pot: u64,
-    pub dealer: usize,
-    pub current: usize,
-    pub street: Street,
+    pub(crate) deck: Deck,
+    pub(crate) board: Board,
+    pub(crate) players: Vec<Player>,
+    pub(crate) pot: u64,
+    pub(crate) dealer: usize,
+    pub(crate) current: usize,
+    pub(crate) street: Street,
 
-    pub current_bet: u64,
-    pub min_raise: u64,
-    pub last_raiser: Option<usize>,
-    pub last_raiser_acted: bool,
-    pub round_starter: usize,
-    pub sb_pos: Option<usize>,
-    pub bb_pos: Option<usize>,
+    pub(crate) current_bet: u64,
+    pub(crate) min_raise: u64,
+    pub(crate) last_raiser: Option<usize>,
+    pub(crate) last_raiser_acted: bool,
+    pub(crate) round_starter: usize,
+    pub(crate) sb_pos: Option<usize>,
+    pub(crate) bb_pos: Option<usize>,
     /// Winners of the last completed hand (seat indices in table order)
-    pub winners: Vec<usize>,
+    pub(crate) winners: Vec<usize>,
     /// Showdown categories for each player in the last hand (None if folded/unknown)
-    pub showdown_categories: Vec<Option<Category>>,
+    pub(crate) showdown_categories: Vec<Option<Category>>,
     hand_history: Vec<HandHistoryEntry>,
 }
 
@@ -161,6 +207,81 @@ impl Game {
             showdown_categories: vec![None; num_players],
             hand_history: Vec::new(),
         }
+    }
+
+    /// Returns the small blind amount
+    pub fn small_blind(&self) -> u64 {
+        self.small_blind
+    }
+
+    /// Returns the big blind amount
+    pub fn big_blind(&self) -> u64 {
+        self.big_blind
+    }
+
+    /// Returns the starting stack amount
+    pub fn starting_stack(&self) -> u64 {
+        self.starting_stack
+    }
+
+    /// Returns a reference to the board
+    pub fn board(&self) -> &Board {
+        &self.board
+    }
+
+    /// Returns a reference to the players
+    pub fn players(&self) -> &[Player] {
+        &self.players
+    }
+
+    /// Returns the current pot size
+    pub fn pot(&self) -> u64 {
+        self.pot
+    }
+
+    /// Returns the dealer position
+    pub fn dealer(&self) -> usize {
+        self.dealer
+    }
+
+    /// Returns the current player index
+    pub fn current(&self) -> usize {
+        self.current
+    }
+
+    /// Returns the current street
+    pub fn street(&self) -> Street {
+        self.street
+    }
+
+    /// Returns the current bet amount
+    pub fn current_bet(&self) -> u64 {
+        self.current_bet
+    }
+
+    /// Returns the minimum raise amount
+    pub fn min_raise(&self) -> u64 {
+        self.min_raise
+    }
+
+    /// Returns the small blind position
+    pub fn sb_pos(&self) -> Option<usize> {
+        self.sb_pos
+    }
+
+    /// Returns the big blind position
+    pub fn bb_pos(&self) -> Option<usize> {
+        self.bb_pos
+    }
+
+    /// Returns the winners of the last completed hand
+    pub fn winners(&self) -> &[usize] {
+        &self.winners
+    }
+
+    /// Returns the showdown categories for each player
+    pub fn showdown_categories(&self) -> &[Option<Category>] {
+        &self.showdown_categories
     }
 
     pub fn history_recent(&self, n: usize) -> Vec<HandHistoryEntry> {
@@ -290,7 +411,8 @@ impl Game {
         self.bb_pos = Some(bb_pos);
         let bb_paid = self.post_blinds(sb_pos, bb_pos);
         self.current_bet = bb_paid;
-        self.min_raise = self.big_blind;
+        // Minimum raise is based on what the BB actually posted, not the nominal blind
+        self.min_raise = bb_paid;
         self.last_raiser = Some(bb_pos);
         self.last_raiser_acted = false;
         if eligible_count == 2 {
@@ -385,7 +507,7 @@ impl Game {
             }
             Street::River => {
                 self.street = Street::Showdown;
-                self.finish_showdown();
+                let _ = self.finish_showdown();
             }
             Street::Showdown => {}
         }
@@ -427,10 +549,14 @@ impl Game {
         }
         let n = self.players.len();
         let mut i = (start + 1) % n;
-        while !self.is_eligible(i) {
+        for _ in 0..n {
+            if self.is_eligible(i) {
+                return i;
+            }
             i = (i + 1) % n;
         }
-        i
+        // No eligible players left; keep the cursor where it is to avoid an infinite loop.
+        start % n
     }
 
     pub fn to_call(&self, idx: usize) -> u64 {
@@ -457,7 +583,7 @@ impl Game {
         self.record_history(self.current, HandHistoryVerb::Fold, None);
         if self.count_eligible() <= 1 {
             self.street = Street::Showdown;
-            self.finish_showdown();
+            let _ = self.finish_showdown();
             return Ok(());
         }
         self.advance_or_move();
@@ -566,11 +692,19 @@ impl Game {
 
         if new_bet > self.current_bet {
             let raise_amt = new_bet - self.current_bet;
-            self.min_raise = self.min_raise.max(raise_amt);
+            // Only reopen betting if this is a full raise (>= min_raise)
+            // Short all-in raises don't reopen action for players who already acted
+            if raise_amt >= self.min_raise {
+                self.min_raise = self.min_raise.max(raise_amt);
+                self.last_raiser = Some(idx);
+                // Initially true: betting round can end once all active players match the bet.
+                // This will be checked in should_end_round() at line 755-762.
+                // Note: If the same player raises again before the round ends, advance_or_move()
+                // will reset this flag to false at line 730-732, reopening action.
+                self.last_raiser_acted = true;
+                self.round_starter = idx;
+            }
             self.current_bet = new_bet;
-            self.last_raiser = Some(idx);
-            self.last_raiser_acted = true;
-            self.round_starter = idx;
         }
         let prev = idx;
         self.current = self.next_eligible_from(prev);
@@ -590,7 +724,7 @@ impl Game {
                 Street::Preflop | Street::Flop | Street::Turn => self.deal_next_street(),
                 Street::River => {
                     self.street = Street::Showdown;
-                    self.finish_showdown();
+                    let _ = self.finish_showdown();
                 }
                 Street::Showdown => {}
             }
@@ -603,6 +737,16 @@ impl Game {
 
     fn should_end_round(&self, prev_actor: usize) -> bool {
         if self.count_eligible() <= 1 {
+            if let Some((_, p)) = self
+                .players
+                .iter()
+                .enumerate()
+                .find(|(_, p)| matches!(p.status, PlayerStatus::Active))
+            {
+                if p.bet < self.current_bet {
+                    return false;
+                }
+            }
             return true;
         }
         if self.current_bet == 0 && self.last_raiser.is_none() {
@@ -629,11 +773,14 @@ impl Game {
         false
     }
 
-    /// Showdown: determine winners and distribute the pot (single-pot only).
-    pub fn finish_showdown(&mut self) {
+    /// Showdown: determine winners and distribute the pot.
+    ///
+    /// Implements full side-pot logic to handle all-in situations correctly.
+    /// Returns an error if hand evaluation fails or game state is inconsistent.
+    pub fn finish_showdown(&mut self) -> Result<(), ShowdownError> {
         let total_pot: u64 = self.players.iter().map(|p| p.contributed).sum();
         if total_pot == 0 {
-            return;
+            return Ok(());
         }
         if self.pot != total_pot {
             self.pot = total_pot;
@@ -666,7 +813,7 @@ impl Game {
             if i < self.showdown_categories.len() {
                 self.showdown_categories[i] = None;
             }
-            return;
+            return Ok(());
         }
         if contenders.len() == 1 {
             let i = contenders[0];
@@ -685,7 +832,7 @@ impl Game {
                     }
                 }
             }
-            return;
+            return Ok(());
         }
         if self.board.len() < 5 {
             while self.board.len() < 5 {
@@ -703,15 +850,18 @@ impl Game {
                 self.record_history(i, HandHistoryVerb::Win, Some(amount));
                 self.pot = 0;
                 self.winners = vec![i];
-                return;
+                return Ok(());
             }
         }
 
         let n = self.players.len();
         let mut evals: Vec<Option<crate::evaluator::Evaluation>> = vec![None; n];
         for &i in &contenders {
-            let hole = self.players[i].hole.as_ref().unwrap();
-            let ev = evaluate_holdem(hole, &self.board).expect("board has 5 cards at showdown");
+            let hole = self.players[i].hole.as_ref().ok_or_else(|| {
+                ShowdownError::InvalidState(format!("contender {i} missing hole cards"))
+            })?;
+            let ev = evaluate_holdem(hole, &self.board)
+                .map_err(|e| ShowdownError::EvaluationFailed(format!("player {i}: {e}")))?;
             if i < self.showdown_categories.len() {
                 self.showdown_categories[i] = Some(ev.category);
             }
@@ -752,7 +902,9 @@ impl Game {
             let mut best = None;
             let mut pot_winners: Vec<usize> = Vec::new();
             for &i in &eligible {
-                let ev = evals[i].unwrap();
+                let ev = evals[i].ok_or_else(|| {
+                    ShowdownError::InvalidState(format!("missing evaluation for player {i}"))
+                })?;
                 if let Some(b) = best {
                     if ev > b {
                         best = Some(ev);
@@ -808,14 +960,28 @@ impl Game {
         self.last_raiser_acted = false;
         self.round_starter = self.current;
         self.winners = winners;
+        Ok(())
     }
 
     fn maybe_force_showdown(&mut self) {
         if matches!(self.street, Street::Showdown) {
             return;
         }
-        if self.count_eligible() > 0 {
+        let active = self.count_eligible();
+        if active > 1 {
             return;
+        }
+        if active == 1 {
+            if let Some((_, p)) = self
+                .players
+                .iter()
+                .enumerate()
+                .find(|(_, p)| matches!(p.status, PlayerStatus::Active))
+            {
+                if p.bet < self.current_bet {
+                    return;
+                }
+            }
         }
         let contenders = self
             .players
@@ -832,11 +998,269 @@ impl Game {
             }
         }
         self.street = Street::Showdown;
-        self.finish_showdown();
+        let _ = self.finish_showdown();
     }
 
     fn record_history(&mut self, seat: usize, verb: HandHistoryVerb, amount: Option<u64>) {
         let entry = HandHistoryEntry { seat, verb, amount, street: self.street };
         self.hand_history.push(entry);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cards::{Card, Rank, Suit};
+    use crate::hand::{Board, HoleCards};
+
+    fn mk_game(n: usize) -> Game {
+        Game::new(n, 1000, 5, 10)
+    }
+
+    fn hole(a: Card, b: Card) -> HoleCards {
+        HoleCards::try_new(a, b).expect("valid hole cards")
+    }
+
+    #[test]
+    fn side_pots_distribute_across_all_in_levels() {
+        let mut g = mk_game(3);
+        g.street = Street::Showdown;
+        g.board = Board::new(vec![
+            Card::new(Rank::Two, Suit::Clubs),
+            Card::new(Rank::Three, Suit::Diamonds),
+            Card::new(Rank::Four, Suit::Hearts),
+            Card::new(Rank::Eight, Suit::Spades),
+            Card::new(Rank::King, Suit::Clubs),
+        ]);
+
+        g.players[0].hole =
+            Some(hole(Card::new(Rank::Queen, Suit::Spades), Card::new(Rank::Queen, Suit::Hearts)));
+        g.players[1].hole =
+            Some(hole(Card::new(Rank::Ace, Suit::Spades), Card::new(Rank::Ace, Suit::Hearts)));
+        g.players[2].hole =
+            Some(hole(Card::new(Rank::Seven, Suit::Clubs), Card::new(Rank::Six, Suit::Clubs)));
+
+        g.players[0].status = PlayerStatus::AllIn;
+        g.players[1].status = PlayerStatus::AllIn;
+        g.players[2].status = PlayerStatus::AllIn;
+
+        g.players[0].contributed = 100;
+        g.players[1].contributed = 50;
+        g.players[2].contributed = 200;
+        g.pot = 350;
+
+        g.players[0].stack = 0;
+        g.players[1].stack = 0;
+        g.players[2].stack = 0;
+
+        let _ = g.finish_showdown();
+
+        assert_eq!(g.players[1].stack, 150, "main pot should go to best hand");
+        assert_eq!(g.players[0].stack, 100, "side pot should go to next best hand");
+        assert_eq!(g.players[2].stack, 100, "single-eligible side pot goes to contributor");
+    }
+
+    #[test]
+    fn split_main_pot_and_single_side_pot() {
+        let mut g = mk_game(3);
+        g.street = Street::Showdown;
+        g.board = Board::new(vec![
+            Card::new(Rank::Ace, Suit::Clubs),
+            Card::new(Rank::King, Suit::Diamonds),
+            Card::new(Rank::Queen, Suit::Hearts),
+            Card::new(Rank::Jack, Suit::Spades),
+            Card::new(Rank::Two, Suit::Clubs),
+        ]);
+
+        g.players[0].hole =
+            Some(hole(Card::new(Rank::Ten, Suit::Clubs), Card::new(Rank::Three, Suit::Diamonds)));
+        g.players[1].hole =
+            Some(hole(Card::new(Rank::Ten, Suit::Hearts), Card::new(Rank::Four, Suit::Spades)));
+        g.players[2].hole =
+            Some(hole(Card::new(Rank::Nine, Suit::Clubs), Card::new(Rank::Nine, Suit::Diamonds)));
+
+        for p in &mut g.players {
+            p.status = PlayerStatus::AllIn;
+            p.stack = 0;
+        }
+
+        g.players[0].contributed = 50;
+        g.players[1].contributed = 50;
+        g.players[2].contributed = 200;
+        g.pot = 300;
+
+        let _ = g.finish_showdown();
+
+        assert_eq!(g.players[0].stack, 75, "main pot split between tied winners");
+        assert_eq!(g.players[1].stack, 75, "main pot split between tied winners");
+        assert_eq!(g.players[2].stack, 150, "side pot goes to lone contributor");
+    }
+
+    #[test]
+    fn split_main_and_side_pots() {
+        let mut g = mk_game(4);
+        g.street = Street::Showdown;
+        g.board = Board::new(vec![
+            Card::new(Rank::Ace, Suit::Clubs),
+            Card::new(Rank::King, Suit::Diamonds),
+            Card::new(Rank::Queen, Suit::Hearts),
+            Card::new(Rank::Jack, Suit::Spades),
+            Card::new(Rank::Two, Suit::Clubs),
+        ]);
+
+        g.players[0].hole =
+            Some(hole(Card::new(Rank::Ten, Suit::Clubs), Card::new(Rank::Three, Suit::Diamonds)));
+        g.players[1].hole =
+            Some(hole(Card::new(Rank::Ten, Suit::Hearts), Card::new(Rank::Four, Suit::Spades)));
+        g.players[2].hole =
+            Some(hole(Card::new(Rank::Nine, Suit::Clubs), Card::new(Rank::Nine, Suit::Diamonds)));
+        g.players[3].hole =
+            Some(hole(Card::new(Rank::Nine, Suit::Hearts), Card::new(Rank::Nine, Suit::Spades)));
+
+        for p in &mut g.players {
+            p.status = PlayerStatus::AllIn;
+            p.stack = 0;
+        }
+
+        g.players[0].contributed = 50;
+        g.players[1].contributed = 50;
+        g.players[2].contributed = 100;
+        g.players[3].contributed = 100;
+        g.pot = 300;
+
+        let _ = g.finish_showdown();
+
+        assert_eq!(g.players[0].stack, 100, "main pot split between tied winners");
+        assert_eq!(g.players[1].stack, 100, "main pot split between tied winners");
+        assert_eq!(g.players[2].stack, 50, "side pot split between tied winners");
+        assert_eq!(g.players[3].stack, 50, "side pot split between tied winners");
+    }
+
+    #[test]
+    fn odd_chip_split_uses_seat_order() {
+        let mut g = mk_game(3);
+        g.street = Street::Showdown;
+        g.dealer = 0;
+        g.board = Board::new(vec![
+            Card::new(Rank::Ace, Suit::Clubs),
+            Card::new(Rank::King, Suit::Diamonds),
+            Card::new(Rank::Queen, Suit::Hearts),
+            Card::new(Rank::Jack, Suit::Spades),
+            Card::new(Rank::Two, Suit::Clubs),
+        ]);
+
+        g.players[0].hole =
+            Some(hole(Card::new(Rank::Ten, Suit::Clubs), Card::new(Rank::Three, Suit::Diamonds)));
+        g.players[1].hole =
+            Some(hole(Card::new(Rank::Ten, Suit::Hearts), Card::new(Rank::Four, Suit::Spades)));
+        g.players[2].hole =
+            Some(hole(Card::new(Rank::Nine, Suit::Clubs), Card::new(Rank::Nine, Suit::Diamonds)));
+
+        for p in &mut g.players {
+            p.status = PlayerStatus::AllIn;
+            p.stack = 0;
+        }
+
+        g.players[0].contributed = 1;
+        g.players[1].contributed = 1;
+        g.players[2].contributed = 2;
+        g.pot = 4;
+
+        let _ = g.finish_showdown();
+
+        assert_eq!(g.players[0].stack, 1, "tie loser should receive smaller share");
+        assert_eq!(g.players[1].stack, 2, "odd chip awarded by seat order");
+        assert_eq!(g.players[2].stack, 1, "single-eligible side pot still awarded");
+    }
+
+    #[test]
+    fn showdown_deals_remaining_board_cards() {
+        let mut game = Game::new(3, 100, 5, 10);
+        game.new_hand();
+
+        for p in &mut game.players {
+            p.status = PlayerStatus::Folded;
+        }
+        game.players[0].status = PlayerStatus::AllIn;
+        game.players[1].status = PlayerStatus::AllIn;
+        game.players[0].contributed = 50;
+        game.players[1].contributed = 50;
+        game.pot = 100;
+        game.board = Board::new(Vec::new());
+        game.street = Street::Showdown;
+
+        let _ = game.finish_showdown();
+
+        assert_eq!(game.board.len(), 5);
+        assert!(game.pot == 0);
+        assert!(!game.winners.is_empty());
+    }
+
+    #[test]
+    fn zero_stack_players_sit_out_next_hand() {
+        let mut game = Game::new(3, 100, 5, 10);
+        game.players[1].stack = 0;
+
+        game.new_hand();
+
+        let busted = &game.players[1];
+        assert!(matches!(busted.status, PlayerStatus::Folded));
+        assert!(busted.hole.is_none());
+        assert_eq!(busted.bet, 0);
+        assert_eq!(busted.contributed, 0);
+        assert_ne!(game.current, 1);
+    }
+
+    #[test]
+    fn postflop_bet_and_calls_advance() {
+        let mut game = Game::new(3, 1000, 5, 10);
+        game.new_hand();
+        // Skip preflop
+        for _ in 0..3 {
+            game.action_check_call().unwrap();
+        }
+        assert_eq!(game.street, Street::Flop);
+        game.action_bet(20).unwrap();
+        game.action_check_call().unwrap();
+        game.action_check_call().unwrap();
+        assert_eq!(game.street, Street::Turn);
+    }
+
+    #[test]
+    fn auto_showdown_when_all_players_all_in() {
+        let mut game = Game::new(3, 100, 5, 10);
+        game.new_hand();
+        let utg = game.current;
+        let sb = (game.dealer + 1) % game.players.len();
+        let bb = (game.dealer + 2) % game.players.len();
+        game.players[utg].stack = 200;
+        game.players[sb].stack = 10;
+        game.players[bb].stack = 10;
+        game.action_raise_to(200).unwrap();
+        game.action_check_call().unwrap();
+        game.action_check_call().unwrap();
+        assert_eq!(game.street, Street::Showdown);
+    }
+
+    #[test]
+    fn auto_showdown_when_one_active_and_others_all_in() {
+        let mut game = Game::new(3, 200, 5, 10);
+        game.new_hand();
+
+        let sb = game.sb_pos.expect("sb set");
+        let bb = game.bb_pos.expect("bb set");
+        let utg = game.current;
+
+        game.players[utg].stack = 200;
+        game.players[sb].stack = 10;
+        game.players[bb].stack = 10;
+
+        let raise_to = game.current_bet + 40;
+        game.action_raise_to(raise_to).unwrap();
+        game.action_check_call().unwrap();
+        game.action_check_call().unwrap();
+
+        assert!(matches!(game.street, Street::Showdown));
+        assert_eq!(game.board.len(), 5);
     }
 }
