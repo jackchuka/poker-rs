@@ -113,32 +113,32 @@ pub fn validate_omaha(hole: &OmahaHoleCards, board: &Board) -> Result<(), OmahaE
 /// println!("Category: {:?}", eval.category);
 /// ```
 pub fn evaluate_omaha(hole: &OmahaHoleCards, board: &Board) -> Result<Evaluation, OmahaError> {
+    use crate::evaluator::combinations::{Combinations4Choose2, Combinations5Choose3};
+
     validate_omaha(hole, board)?;
     let hole_cards = hole.as_array();
     let board_cards = board.as_slice();
 
     let mut best: Option<Evaluation> = None;
-    for i in 0..3 {
-        for j in (i + 1)..4 {
-            for a in 0..3 {
-                for b in (a + 1)..4 {
-                    for c in (b + 1)..5 {
-                        let hand = [
-                            hole_cards[i],
-                            hole_cards[j],
-                            board_cards[a],
-                            board_cards[b],
-                            board_cards[c],
-                        ];
-                        let eval = evaluate_five(&hand);
-                        if best.map_or(true, |b| eval > b) {
-                            best = Some(eval);
-                        }
-                    }
-                }
+
+    // Iterate through all C(4,2) * C(5,3) = 6 * 10 = 60 combinations
+    for hole_indices in Combinations4Choose2::new() {
+        for board_indices in Combinations5Choose3::new() {
+            let hand = [
+                hole_cards[hole_indices[0]],
+                hole_cards[hole_indices[1]],
+                board_cards[board_indices[0]],
+                board_cards[board_indices[1]],
+                board_cards[board_indices[2]],
+            ];
+            let eval = evaluate_five(&hand);
+
+            if best.as_ref().map_or(true, |b| eval > *b) {
+                best = Some(eval);
             }
         }
     }
+
     Ok(best.unwrap_or_else(|| {
         let hand = [hole_cards[0], hole_cards[1], board_cards[0], board_cards[1], board_cards[2]];
         evaluate_five(&hand)

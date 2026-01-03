@@ -1,3 +1,10 @@
+pub(crate) mod combinations;
+pub(crate) mod detector;
+pub(crate) mod hand_analysis;
+pub(crate) mod rank_groups;
+pub(crate) mod straight_info;
+pub(crate) mod suit_info;
+
 use crate::cards::{Card, Rank};
 use crate::hand::{validate_holdem, Board, HandError, HoleCards};
 use core::cmp::Ordering;
@@ -143,177 +150,45 @@ pub fn evaluate_holdem(hole: &HoleCards, board: &Board) -> Result<Evaluation, Ev
 
 /// Evaluate exactly five cards; detects category and encodes tie-breakers.
 pub fn evaluate_five(cards: &[Card; 5]) -> Evaluation {
-    // Sort cards descending by rank (then suit) for stable output
-    let mut sorted = *cards;
-    sorted.sort_by(|a, b| b.rank().cmp(&a.rank()).then(b.suit().cmp(&a.suit())));
+    use detector::DETECTORS;
+    use hand_analysis::HandAnalysis;
 
-    // Rank counts
-    let mut counts = [0u8; 15]; // 2..14 used
-    let ranks =
-        [sorted[0].rank(), sorted[1].rank(), sorted[2].rank(), sorted[3].rank(), sorted[4].rank()];
-    for r in ranks.iter() {
-        counts[*r as usize] += 1;
-    }
+    // Build analysis once (sorted cards, rank counts, groups, flush/straight info)
+    let analysis = HandAnalysis::new(cards);
 
-    // Flush check
-    let is_flush = sorted.iter().all(|c| c.suit() == sorted[0].suit());
-
-    // Unique ranks ascending
-    use std::collections::BTreeSet;
-    let mut uniq_vals: Vec<u8> =
-        ranks.iter().copied().map(|r| r as u8).collect::<BTreeSet<_>>().into_iter().collect();
-    uniq_vals.sort_unstable();
-    let is_wheel = uniq_vals == vec![2, 3, 4, 5, 14];
-    let is_consecutive = uniq_vals.len() == 5 && uniq_vals.windows(2).all(|w| w[1] == w[0] + 1);
-    let is_straight = is_wheel || is_consecutive;
-    fn rank_from_val(v: u8) -> Rank {
-        match v {
-            2 => Rank::Two,
-            3 => Rank::Three,
-            4 => Rank::Four,
-            5 => Rank::Five,
-            6 => Rank::Six,
-            7 => Rank::Seven,
-            8 => Rank::Eight,
-            9 => Rank::Nine,
-            10 => Rank::Ten,
-            11 => Rank::Jack,
-            12 => Rank::Queen,
-            13 => Rank::King,
-            _ => Rank::Ace,
+    // Check categories in priority order (highest to lowest)
+    for detector in DETECTORS.iter() {
+        if detector.detect(&analysis) {
+            return detector.build_evaluation(&analysis);
         }
     }
-    let straight_top_rank: Rank = if is_straight {
-        if is_wheel {
-            Rank::Five
-        } else {
-            rank_from_val(*uniq_vals.last().unwrap())
-        }
-    } else {
-        Rank::Two
-    };
 
-    // Straight Flush
-    if is_flush && is_straight {
-        let tiebreak = [straight_top_rank, Rank::Two, Rank::Two, Rank::Two, Rank::Two];
-        let value = HandValue::from_parts(Category::StraightFlush, &tiebreak);
-        return Evaluation { category: Category::StraightFlush, best_five: sorted, value };
-    }
-
-    // Build groups: (rank, count) sorted by (count desc, rank desc)
-    let mut groups: Vec<(Rank, u8)> = (2u8..=14u8)
-        .rev()
-        .filter_map(|v| {
-            let c = counts[v as usize];
-            if c > 0 {
-                Some((rank_from_val(v), c))
-            } else {
-                None
-            }
-        })
-        .collect();
-    groups.sort_by(|a, b| b.1.cmp(&a.1).then(b.0.cmp(&a.0)));
-
-    // Four of a kind
-    if let Some(&(quad_rank, 4)) = groups.first() {
-        let kicker = groups.iter().find(|(_, c)| *c == 1).map(|(r, _)| *r).unwrap_or(Rank::Two);
-        let tiebreak = [quad_rank, kicker, Rank::Two, Rank::Two, Rank::Two];
-        let value = HandValue::from_parts(Category::FourOfAKind, &tiebreak);
-        return Evaluation { category: Category::FourOfAKind, best_five: sorted, value };
-    }
-
-    // Full House (3 + 2)
-    if groups.len() >= 2 && groups[0].1 == 3 && groups[1].1 >= 2 {
-        let trips = groups[0].0;
-        let pair = groups[1].0;
-        let tiebreak = [trips, pair, Rank::Two, Rank::Two, Rank::Two];
-        let value = HandValue::from_parts(Category::FullHouse, &tiebreak);
-        return Evaluation { category: Category::FullHouse, best_five: sorted, value };
-    }
-
-    // Flush
-    if is_flush {
-        let mut rdesc = ranks;
-        rdesc.sort_by(|a, b| b.cmp(a));
-        let value = HandValue::from_parts(Category::Flush, &rdesc);
-        return Evaluation { category: Category::Flush, best_five: sorted, value };
-    }
-
-    // Straight
-    if is_straight {
-        let tiebreak = [straight_top_rank, Rank::Two, Rank::Two, Rank::Two, Rank::Two];
-        let value = HandValue::from_parts(Category::Straight, &tiebreak);
-        return Evaluation { category: Category::Straight, best_five: sorted, value };
-    }
-
-    // Three of a kind
-    if let Some(&(trips_rank, 3)) = groups.first() {
-        let mut kickers: Vec<Rank> =
-            groups.iter().filter_map(|(r, c)| if *c == 1 { Some(*r) } else { None }).collect();
-        kickers.sort_by(|a, b| b.cmp(a));
-        let tiebreak = [trips_rank, kickers[0], kickers[1], Rank::Two, Rank::Two];
-        let value = HandValue::from_parts(Category::ThreeOfAKind, &tiebreak);
-        return Evaluation { category: Category::ThreeOfAKind, best_five: sorted, value };
-    }
-
-    // Two Pair
-    let pairs: Vec<Rank> =
-        groups.iter().filter_map(|(r, c)| if *c == 2 { Some(*r) } else { None }).collect();
-    if pairs.len() >= 2 {
-        let mut p = pairs.clone();
-        p.sort_by(|a, b| b.cmp(a));
-        let kicker = groups
-            .iter()
-            .find_map(|(r, c)| if *c == 1 { Some(*r) } else { None })
-            .unwrap_or(Rank::Two);
-        let tiebreak = [p[0], p[1], kicker, Rank::Two, Rank::Two];
-        let value = HandValue::from_parts(Category::TwoPair, &tiebreak);
-        return Evaluation { category: Category::TwoPair, best_five: sorted, value };
-    }
-
-    // One Pair
-    if let Some(&(pair_rank, 2)) = groups.first() {
-        let mut kickers: Vec<Rank> =
-            groups.iter().filter_map(|(r, c)| if *c == 1 { Some(*r) } else { None }).collect();
-        kickers.sort_by(|a, b| b.cmp(a));
-        let tiebreak = [pair_rank, kickers[0], kickers[1], kickers[2], Rank::Two];
-        let value = HandValue::from_parts(Category::Pair, &tiebreak);
-        return Evaluation { category: Category::Pair, best_five: sorted, value };
-    }
-
-    // High Card
-    let mut rdesc = ranks;
-    rdesc.sort_by(|a, b| b.cmp(a));
-    let value = HandValue::from_parts(Category::HighCard, &rdesc);
-    Evaluation { category: Category::HighCard, best_five: sorted, value }
+    // Unreachable: HighCard detector always matches as fallback
+    unreachable!("HighCard detector should always match")
 }
 
 /// Evaluate seven cards (helper for Hold'em style 7-card evaluation).
 /// Iterate all 21 five-card combinations from 7 and return the best by value.
 pub fn evaluate_seven(cards: &[Card; 7]) -> Evaluation {
+    use combinations::Combinations7Choose5;
+
     let mut best: Option<Evaluation> = None;
-    for i in 0..3 {
-        for j in (i + 1)..4 {
-            for k in (j + 1)..5 {
-                for l in (k + 1)..6 {
-                    for m in (l + 1)..7 {
-                        let hand = [cards[i], cards[j], cards[k], cards[l], cards[m]];
-                        let eval = evaluate_five(&hand);
-                        if let Some(b) = best {
-                            if eval > b {
-                                best = Some(eval);
-                            } else {
-                                // keep current best
-                            }
-                        } else {
-                            best = Some(eval);
-                        }
-                    }
-                }
-            }
+
+    for indices in Combinations7Choose5::new() {
+        let hand = [
+            cards[indices[0]],
+            cards[indices[1]],
+            cards[indices[2]],
+            cards[indices[3]],
+            cards[indices[4]],
+        ];
+        let eval = evaluate_five(&hand);
+
+        if best.as_ref().map_or(true, |b| eval > *b) {
+            best = Some(eval);
         }
     }
-    debug_assert!(best.is_some());
+
     best.unwrap_or_else(|| evaluate_five(&[cards[0], cards[1], cards[2], cards[3], cards[4]]))
 }
 

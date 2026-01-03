@@ -1,5 +1,3 @@
-#![cfg(feature = "omaha")]
-
 use poker_rs::cards::{Card, Rank, Suit};
 use poker_rs::evaluator::Category;
 use poker_rs::hand::Board;

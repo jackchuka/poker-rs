@@ -15,7 +15,6 @@ path = "src/bin/poker.rs"
 
 [features]
 default = []
-omaha = []
 bench = ["dep:criterion"]
 
 [dependencies]

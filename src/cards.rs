@@ -41,6 +41,26 @@ impl Rank {
         self as u8
     }
 
+    /// Convert a numeric value (2-14) back to a Rank.
+    /// Values outside this range will return Rank::Ace.
+    pub const fn from_value(v: u8) -> Rank {
+        match v {
+            2 => Rank::Two,
+            3 => Rank::Three,
+            4 => Rank::Four,
+            5 => Rank::Five,
+            6 => Rank::Six,
+            7 => Rank::Seven,
+            8 => Rank::Eight,
+            9 => Rank::Nine,
+            10 => Rank::Ten,
+            11 => Rank::Jack,
+            12 => Rank::Queen,
+            13 => Rank::King,
+            _ => Rank::Ace,
+        }
+    }
+
     pub const fn to_char(self) -> char {
         match self {
             Rank::Two => '2',
