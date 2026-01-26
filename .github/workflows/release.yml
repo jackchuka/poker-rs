@@ -19,7 +19,7 @@ jobs:
         uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7
 
       - name: Install Zig
-        uses: mlugg/setup-zig@e7d1537c378b83b8049f65dda471d87a2f7b2df2 # v2.2.0
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: latest
 
