@@ -19,7 +19,7 @@ bench = ["dep:criterion"]
 
 [dependencies]
 thiserror = "2.0.17"
-rand = { version = "0.9.2", default-features = true }
+rand = { version = "0.9.3", default-features = true }
 rand_chacha = "0.9.0"
 ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
 crossterm = "0.29"
