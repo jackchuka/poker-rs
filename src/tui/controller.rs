@@ -68,10 +68,8 @@ fn handle_key(app: &mut AppState, code: KeyCode) -> bool {
             KeyCode::Esc => {
                 let _ = app.handle_input(InputAction::AmountCancel);
             }
-            KeyCode::Enter => {
-                if app.handle_input(InputAction::AmountSubmit) {
-                    app.agents_on_turn();
-                }
+            KeyCode::Enter if app.handle_input(InputAction::AmountSubmit) => {
+                app.agents_on_turn();
             }
             KeyCode::Backspace => {
                 let _ = app.handle_input(InputAction::AmountBackspace);
@@ -129,25 +127,17 @@ fn handle_key(app: &mut AppState, code: KeyCode) -> bool {
             KeyCode::Char('d') | KeyCode::Char('D') => {
                 let _ = app.handle_input(InputAction::BotDifficultyNext);
             }
-            KeyCode::Char('f') | KeyCode::Char('F') => {
-                if app.handle_input(InputAction::Fold) {
-                    app.agents_on_turn();
-                }
+            KeyCode::Char('f') | KeyCode::Char('F') if app.handle_input(InputAction::Fold) => {
+                app.agents_on_turn();
             }
-            KeyCode::Char('c') | KeyCode::Char('C') => {
-                if app.handle_input(InputAction::CheckCall) {
-                    app.agents_on_turn();
-                }
+            KeyCode::Char('c') | KeyCode::Char('C') if app.handle_input(InputAction::CheckCall) => {
+                app.agents_on_turn();
             }
-            KeyCode::Char('b') | KeyCode::Char('B') => {
-                if app.handle_input(InputAction::BetMin) {
-                    app.agents_on_turn();
-                }
+            KeyCode::Char('b') | KeyCode::Char('B') if app.handle_input(InputAction::BetMin) => {
+                app.agents_on_turn();
             }
-            KeyCode::Char('r') | KeyCode::Char('R') => {
-                if app.handle_input(InputAction::RaiseMin) {
-                    app.agents_on_turn();
-                }
+            KeyCode::Char('r') | KeyCode::Char('R') if app.handle_input(InputAction::RaiseMin) => {
+                app.agents_on_turn();
             }
             KeyCode::Char(']') => {
                 let _ = app.handle_input(InputAction::FocusNext);
